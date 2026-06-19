@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  nexus-api:
+    build: ./apps/nexus-api
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    volumes:
+      - ./apps/nexus-api:/app
+
+  nexus-web:
+    build: ./apps/nexus-web
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./apps/nexus-web:/app
+
+# Add more services for runtime components as needed
