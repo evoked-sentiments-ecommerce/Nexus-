@@ -56,16 +56,35 @@ const toUpdateInput = (body: unknown): UpdateProjectInput | null => {
     return null;
   }
 
-  const candidate = body as UpdateProjectInput;
-  if (candidate.status && !isValidStatus(candidate.status)) {
+  const candidate = body as Partial<
+    UpdateProjectInput & { id?: unknown; ownerId?: unknown; createdAt?: unknown }
+  >;
+
+  if (candidate.title !== undefined && typeof candidate.title !== "string") {
     return null;
   }
 
-  if (candidate.priority && !isValidPriority(candidate.priority)) {
+  if (
+    candidate.description !== undefined &&
+    typeof candidate.description !== "string"
+  ) {
     return null;
   }
 
-  return candidate;
+  if (candidate.status !== undefined && !isValidStatus(candidate.status)) {
+    return null;
+  }
+
+  if (candidate.priority !== undefined && !isValidPriority(candidate.priority)) {
+    return null;
+  }
+
+  return {
+    title: candidate.title,
+    description: candidate.description,
+    status: candidate.status,
+    priority: candidate.priority,
+  };
 };
 
 export const createProjectsRouter = (
@@ -129,7 +148,10 @@ export const createProjectsRouter = (
 
     const updated: Project = {
       ...existing,
-      ...updates,
+      title: updates.title ?? existing.title,
+      description: updates.description ?? existing.description,
+      status: updates.status ?? existing.status,
+      priority: updates.priority ?? existing.priority,
       updatedAt: nowIso(),
     };
 

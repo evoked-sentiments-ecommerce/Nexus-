@@ -18,6 +18,8 @@ export default function ProjectCard({
   updatedAt,
 }: ProjectCardProps) {
   const badgeColor = statusColorMap[status] ?? "#334155";
+  const ownerLabel =
+    ownerId === "system" ? "System" : `User ${ownerId.slice(0, 8).toUpperCase()}`;
 
   return (
     <article
@@ -64,7 +66,7 @@ export default function ProjectCard({
         }}
       >
         <span style={{ textTransform: "capitalize" }}>Priority: {priority}</span>
-        <span>Owner: {ownerId}</span>
+        <span>Owner: {ownerLabel}</span>
         <span>Updated: {new Date(updatedAt).toLocaleDateString()}</span>
       </footer>
     </article>
