@@ -20,4 +20,9 @@ export interface CreateProjectInput {
   ownerId: string;
 }
 
-export type UpdateProjectInput = Partial<CreateProjectInput>;
+export interface UpdateProjectInput {
+  title?: string;
+  description?: string;
+  status?: ProjectStatus;
+  priority?: ProjectPriority;
+}
