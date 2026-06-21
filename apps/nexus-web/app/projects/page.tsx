@@ -1,16 +1,6 @@
 import Link from "next/link";
 import ProjectList from "../../components/projects/ProjectList";
-
-type Project = {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-  priority: string;
-  ownerId: string;
-  createdAt: string;
-  updatedAt: string;
-};
+import type { Project } from "../../components/projects/types";
 
 const fallbackProjects: Project[] = [
   {
@@ -27,7 +17,8 @@ const fallbackProjects: Project[] = [
 
 async function getProjects(): Promise<Project[]> {
   try {
-    const response = await fetch("/api/projects", {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+    const response = await fetch(`${apiBaseUrl}/api/projects`, {
       cache: "no-store",
     });
 

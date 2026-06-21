@@ -12,6 +12,7 @@ type ProjectsRouterOptions = {
 };
 
 const projects = new Map<string, Project>();
+// Foundation implementation note: this in-memory store should be replaced with a database-backed repository.
 
 const isValidStatus = (status: unknown): status is ProjectStatus =>
   typeof status === "string" &&

@@ -1,13 +1,6 @@
-type ProjectCardProps = {
-  id: string;
-  title: string;
-  description: string;
-  status: string;
-  priority: string;
-  ownerId: string;
-  createdAt: string;
-  updatedAt: string;
-};
+import type { Project } from "./types";
+
+type ProjectCardProps = Project;
 
 const statusColorMap: Record<string, string> = {
   planned: "#64748b",
