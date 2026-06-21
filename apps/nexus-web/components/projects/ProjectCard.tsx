@@ -18,8 +18,13 @@ export default function ProjectCard({
   updatedAt,
 }: ProjectCardProps) {
   const badgeColor = statusColorMap[status] ?? "#334155";
+  const trimmedOwnerId = ownerId.trim();
   const ownerLabel =
-    ownerId === "system" ? "System" : `User ${ownerId.slice(0, 8).toUpperCase()}`;
+    trimmedOwnerId === "system"
+      ? "System"
+      : trimmedOwnerId
+        ? `User ${trimmedOwnerId.slice(0, Math.min(8, trimmedOwnerId.length)).toUpperCase()}`
+        : "Unassigned";
 
   return (
     <article

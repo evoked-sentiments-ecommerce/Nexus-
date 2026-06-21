@@ -48,7 +48,20 @@ const toCreateInput = (body: unknown): CreateProjectInput | null => {
     return null;
   }
 
-  return candidate as CreateProjectInput;
+  if (
+    candidate.description !== undefined &&
+    typeof candidate.description !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    title: candidate.title,
+    description: candidate.description,
+    status: candidate.status,
+    priority: candidate.priority,
+    ownerId: candidate.ownerId,
+  };
 };
 
 const toUpdateInput = (body: unknown): UpdateProjectInput | null => {
@@ -148,12 +161,24 @@ export const createProjectsRouter = (
 
     const updated: Project = {
       ...existing,
-      title: updates.title ?? existing.title,
-      description: updates.description ?? existing.description,
-      status: updates.status ?? existing.status,
-      priority: updates.priority ?? existing.priority,
       updatedAt: nowIso(),
     };
+
+    if (updates.title !== undefined) {
+      updated.title = updates.title;
+    }
+
+    if (updates.description !== undefined) {
+      updated.description = updates.description;
+    }
+
+    if (updates.status !== undefined) {
+      updated.status = updates.status;
+    }
+
+    if (updates.priority !== undefined) {
+      updated.priority = updates.priority;
+    }
 
     projects.set(updated.id, updated);
     res.json(updated);
