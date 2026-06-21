@@ -1,8 +1,8 @@
-import type { Project } from "./types";
+import type { Project, ProjectStatus } from "./types";
 
 type ProjectCardProps = Project;
 
-const statusColorMap: Record<string, string> = {
+const statusColorMap: Record<ProjectStatus, string> = {
   planned: "#64748b",
   active: "#2563eb",
   blocked: "#dc2626",

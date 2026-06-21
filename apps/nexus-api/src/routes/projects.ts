@@ -1,4 +1,5 @@
 import { Router, type RequestHandler } from "express";
+import { randomUUID } from "node:crypto";
 import {
   type CreateProjectInput,
   type Project,
@@ -23,7 +24,7 @@ const isValidPriority = (priority: unknown): priority is ProjectPriority =>
   ["low", "medium", "high", "critical"].includes(priority);
 
 const nowIso = () => new Date().toISOString();
-const projectId = () => `prj_${Math.random().toString(36).slice(2, 10)}`;
+const projectId = () => `prj_${randomUUID()}`;
 
 const toCreateInput = (body: unknown): CreateProjectInput | null => {
   if (!body || typeof body !== "object") {
