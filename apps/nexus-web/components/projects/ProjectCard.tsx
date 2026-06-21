@@ -1,0 +1,79 @@
+type ProjectCardProps = {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const statusColorMap: Record<string, string> = {
+  planned: "#64748b",
+  active: "#2563eb",
+  blocked: "#dc2626",
+  completed: "#16a34a",
+};
+
+export default function ProjectCard({
+  title,
+  description,
+  status,
+  priority,
+  ownerId,
+  updatedAt,
+}: ProjectCardProps) {
+  const badgeColor = statusColorMap[status] ?? "#334155";
+
+  return (
+    <article
+      style={{
+        border: "1px solid #e2e8f0",
+        borderRadius: 10,
+        padding: 16,
+        backgroundColor: "#ffffff",
+      }}
+    >
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 18 }}>{title}</h3>
+        <span
+          style={{
+            backgroundColor: badgeColor,
+            color: "#ffffff",
+            borderRadius: 999,
+            fontSize: 12,
+            padding: "4px 10px",
+            textTransform: "capitalize",
+          }}
+        >
+          {status}
+        </span>
+      </header>
+
+      <p style={{ margin: "12px 0", color: "#334155" }}>
+        {description || "No project description provided."}
+      </p>
+
+      <footer
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          color: "#475569",
+          fontSize: 13,
+        }}
+      >
+        <span style={{ textTransform: "capitalize" }}>Priority: {priority}</span>
+        <span>Owner: {ownerId}</span>
+        <span>Updated: {new Date(updatedAt).toLocaleDateString()}</span>
+      </footer>
+    </article>
+  );
+}
