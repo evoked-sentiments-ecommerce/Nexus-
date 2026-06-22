@@ -155,7 +155,9 @@ const parseSubscriptionPlan = (
     return PRICE_ID_TO_PLAN[priceId];
   }
 
-  throw new Error("Unable to resolve subscription plan from Stripe payload");
+  throw new Error(
+    `Unable to resolve subscription plan from Stripe payload (metadata.plan=${String(metadataPlan)}, priceId=${String(priceId)})`,
+  );
 };
 
 const parseBillingCycle = (
