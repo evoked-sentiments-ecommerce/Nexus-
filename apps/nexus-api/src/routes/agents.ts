@@ -72,6 +72,12 @@ router.post("/", async (req: Request, res: Response) => {
   try {
     const key = parseAgentKey(req.body.key);
     const definition = registry.get(key);
+    const rawCollaborationTargets: unknown[] = Array.isArray(req.body.collaborationTargets)
+      ? (req.body.collaborationTargets as unknown[])
+      : [];
+    const collaborationTargets = rawCollaborationTargets
+      .filter((item): item is string => typeof item === "string")
+      .map((item: string) => parseAgentKey(item));
 
     const agent: Agent = {
       id: randomUUID(),
@@ -86,10 +92,8 @@ router.post("/", async (req: Request, res: Response) => {
       capabilities: Array.isArray(req.body.capabilities)
         ? req.body.capabilities.filter((item: unknown): item is string => typeof item === "string")
         : definition?.specialties ?? [],
-      collaborationTargets: Array.isArray(req.body.collaborationTargets)
-        ? req.body.collaborationTargets
-            .filter((item: unknown): item is string => typeof item === "string")
-            .map((item) => parseAgentKey(item))
+      collaborationTargets: collaborationTargets.length > 0
+        ? collaborationTargets
         : definition?.collaborateWith ?? [],
       performance: {
         accuracy: normalizeConfidence(req.body.performance?.accuracy ?? 0),
@@ -161,10 +165,13 @@ router.post("/sessions", async (req: Request, res: Response) => {
       return;
     }
 
-    const requestedParticipants = Array.isArray(req.body.participatingAgentIds)
-      ? req.body.participatingAgentIds
-          .filter((item: unknown): item is string => typeof item === "string")
-          .map((item) => parseAgentKey(item))
+    const rawParticipants: unknown[] = Array.isArray(req.body.participatingAgentIds)
+      ? (req.body.participatingAgentIds as unknown[])
+      : [];
+    const requestedParticipants: AgentKey[] = rawParticipants.length > 0
+      ? rawParticipants
+          .filter((item): item is string => typeof item === "string")
+          .map((item: string) => parseAgentKey(item))
       : [];
 
     const participatingAgentIds = requestedParticipants.length > 0
@@ -228,10 +235,13 @@ router.post("/sessions/:id/run", async (req: Request, res: Response) => {
       return;
     }
 
-    const selectedAgents = Array.isArray(req.body.participatingAgentIds)
-      ? req.body.participatingAgentIds
-          .filter((item: unknown): item is string => typeof item === "string")
-          .map((item) => parseAgentKey(item))
+    const rawSelectedAgents: unknown[] = Array.isArray(req.body.participatingAgentIds)
+      ? (req.body.participatingAgentIds as unknown[])
+      : [];
+    const selectedAgents = rawSelectedAgents.length > 0
+      ? rawSelectedAgents
+          .filter((item): item is string => typeof item === "string")
+          .map((item: string) => parseAgentKey(item))
       : undefined;
 
     const executionInput: AgentSession = {
