@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
+import { BrandRepository } from "../database/repositories";
 import {
   type Brand,
   type BrandStatus,
@@ -13,8 +14,7 @@ type BrandsRouterOptions = {
   requireAuth?: RequestHandler;
 };
 
-const brands = new Map<string, Brand>();
-// TODO: Replace this in-memory map with persistent storage before production deployment.
+const brandRepository = new BrandRepository();
 
 const VALID_STATUSES: BrandStatus[] = [
   "draft",
@@ -176,12 +176,24 @@ export const createBrandsRouter = (
     router.use(options.requireAuth);
   }
 
-  router.get("/", (_req, res) => {
-    res.json(Array.from(brands.values()));
+  router.get("/", async (_req, res) => {
+    try {
+      const brands = await brandRepository.findAll();
+      res.json(brands);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch brands" });
+    }
   });
 
-  router.get("/:id", (req, res) => {
-    const brand = brands.get(req.params.id);
+  router.get("/:id", async (req, res) => {
+    let brand: Brand | null = null;
+    try {
+      brand = await brandRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch brand" });
+      return;
+    }
+
     if (!brand) {
       res.status(404).json({ error: "Brand not found" });
       return;
@@ -189,7 +201,7 @@ export const createBrandsRouter = (
     res.json(brand);
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid brand payload" });
@@ -219,12 +231,23 @@ export const createBrandsRouter = (
       updatedAt: createdAt,
     };
 
-    brands.set(brand.id, brand);
-    res.status(201).json(brand);
+    try {
+      const created = await brandRepository.create(brand);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ error: "Failed to create brand" });
+    }
   });
 
-  router.put("/:id", (req, res) => {
-    const existing = brands.get(req.params.id);
+  router.put("/:id", async (req, res) => {
+    let existing: Brand | null = null;
+    try {
+      existing = await brandRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch brand" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Brand not found" });
       return;
@@ -257,12 +280,28 @@ export const createBrandsRouter = (
     if (updates.researchItemIds !== undefined)
       updated.researchItemIds = updates.researchItemIds;
 
-    brands.set(updated.id, updated);
-    res.json(updated);
+    try {
+      const persisted = await brandRepository.update(updated);
+      if (!persisted) {
+        res.status(404).json({ error: "Brand not found" });
+        return;
+      }
+
+      res.json(persisted);
+    } catch {
+      res.status(500).json({ error: "Failed to update brand" });
+    }
   });
 
-  router.delete("/:id", (req, res) => {
-    const removed = brands.delete(req.params.id);
+  router.delete("/:id", async (req, res) => {
+    let removed = false;
+    try {
+      removed = await brandRepository.delete(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to delete brand" });
+      return;
+    }
+
     if (!removed) {
       res.status(404).json({ error: "Brand not found" });
       return;

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router, raw, type Request, type RequestHandler, type Response } from "express";
+import { withTransaction } from "../database/connection";
+import { SubscriptionRepository } from "../database/repositories";
 import {
   PLAN_DEFINITIONS,
   type BillingCycle,
@@ -32,9 +34,7 @@ type CheckoutRequestInput = {
   customerEmail: string | null;
 };
 
-// WARNING: Billing data must not remain in memory for production usage.
-// Replace this with a durable database-backed subscription repository before any production deployment.
-const subscriptions = new Map<string, Subscription>();
+const subscriptionRepository = new SubscriptionRepository();
 
 const VALID_PLANS: SubscriptionPlan[] = ["starter", "professional", "enterprise"];
 const VALID_STATUSES: SubscriptionStatus[] = [
@@ -72,20 +72,17 @@ const subId = () => `sub_${randomUUID()}`;
 const resolveBaseUrl = (req: Request): string =>
   req.get("origin") ?? process.env.APP_URL ?? "http://localhost:3000";
 
-const findByCustomer = (customerId: string): Subscription | undefined =>
-  Array.from(subscriptions.values()).find((s) => s.customerId === customerId);
+const findByCustomer = (repo: SubscriptionRepository, customerId: string) =>
+  repo.findByCustomerId(customerId);
 
-const findByStripeSubscriptionId = (
-  stripeSubscriptionId: string,
-): Subscription | undefined =>
-  Array.from(subscriptions.values()).find(
-    (s) => s.stripeSubscriptionId === stripeSubscriptionId,
-  );
+const findByStripeSubscriptionId = (repo: SubscriptionRepository, stripeSubscriptionId: string) =>
+  repo.findByStripeSubscriptionId(stripeSubscriptionId);
 
-const findByStripeCustomerId = (stripeCustomerId: string): Subscription | undefined =>
-  Array.from(subscriptions.values()).find((s) => s.stripeCustomerId === stripeCustomerId);
+const findByStripeCustomerId = (repo: SubscriptionRepository, stripeCustomerId: string) =>
+  repo.findByStripeCustomerId(stripeCustomerId);
 
-const createOrUpdateSubscription = (
+const createOrUpdateSubscription = async (
+  repo: SubscriptionRepository,
   base: Partial<Subscription> &
     Pick<Subscription, "customerId" | "plan" | "billingCycle" | "amount"> & {
       status?: SubscriptionStatus;
@@ -94,8 +91,8 @@ const createOrUpdateSubscription = (
       startDate?: string;
       endDate?: string | null;
     },
-  existing?: Subscription,
-): Subscription => {
+  existing?: Subscription | null,
+): Promise<Subscription> => {
   const timestamp = nowIso();
   const next: Subscription = {
     id: existing?.id ?? subId(),
@@ -119,8 +116,7 @@ const createOrUpdateSubscription = (
     updatedAt: timestamp,
   };
 
-  subscriptions.set(next.id, next);
-  return next;
+  return repo.save(next);
 };
 
 const toCheckoutInput = (req: Request): CheckoutRequestInput | null => {
@@ -171,13 +167,16 @@ const toCheckoutInput = (req: Request): CheckoutRequestInput | null => {
   };
 };
 
-const applySnapshot = (snapshot: StripeSubscriptionSnapshot): Subscription => {
+const applySnapshot = async (
+  repo: SubscriptionRepository,
+  snapshot: StripeSubscriptionSnapshot,
+): Promise<Subscription> => {
   const existing =
-    findByStripeSubscriptionId(snapshot.stripeSubscriptionId) ??
-    (snapshot.customerId ? findByCustomer(snapshot.customerId) : undefined) ??
+    (await findByStripeSubscriptionId(repo, snapshot.stripeSubscriptionId)) ??
+    (snapshot.customerId ? await findByCustomer(repo, snapshot.customerId) : null) ??
     (snapshot.stripeCustomerId
-      ? findByStripeCustomerId(snapshot.stripeCustomerId)
-      : undefined);
+      ? await findByStripeCustomerId(repo, snapshot.stripeCustomerId)
+      : null);
 
   const customerId =
     snapshot.customerId ??
@@ -185,6 +184,7 @@ const applySnapshot = (snapshot: StripeSubscriptionSnapshot): Subscription => {
     `stripe_customer_${snapshot.stripeCustomerId ?? randomUUID()}`;
 
   return createOrUpdateSubscription(
+    repo,
     {
       customerId,
       plan: snapshot.plan,
@@ -200,15 +200,18 @@ const applySnapshot = (snapshot: StripeSubscriptionSnapshot): Subscription => {
   );
 };
 
-const applyCheckoutCompletion = (payload: CheckoutCompletionPayload): Subscription | null => {
+const applyCheckoutCompletion = async (
+  repo: SubscriptionRepository,
+  payload: CheckoutCompletionPayload,
+): Promise<Subscription | null> => {
   const existing =
     (payload.stripeSubscriptionId
-      ? findByStripeSubscriptionId(payload.stripeSubscriptionId)
-      : undefined) ??
-    (payload.customerId ? findByCustomer(payload.customerId) : undefined) ??
+      ? await findByStripeSubscriptionId(repo, payload.stripeSubscriptionId)
+      : null) ??
+    (payload.customerId ? await findByCustomer(repo, payload.customerId) : null) ??
     (payload.stripeCustomerId
-      ? findByStripeCustomerId(payload.stripeCustomerId)
-      : undefined);
+      ? await findByStripeCustomerId(repo, payload.stripeCustomerId)
+      : null);
 
   const plan = payload.plan ?? existing?.plan;
   const billingCycle = payload.billingCycle ?? existing?.billingCycle;
@@ -221,6 +224,7 @@ const applyCheckoutCompletion = (payload: CheckoutCompletionPayload): Subscripti
   const amount = payload.amount ?? existing?.amount ?? getPlanAmount(plan, billingCycle);
 
   return createOrUpdateSubscription(
+    repo,
     {
       customerId,
       plan,
@@ -237,16 +241,18 @@ const applyCheckoutCompletion = (payload: CheckoutCompletionPayload): Subscripti
   );
 };
 
-const updateStatusByStripeSubscription = (
+const updateStatusByStripeSubscription = async (
+  repo: SubscriptionRepository,
   stripeSubscriptionId: string,
   status: SubscriptionStatus,
-): Subscription | null => {
+): Promise<Subscription | null> => {
   if (!isValidStatus(status)) return null;
 
-  const existing = findByStripeSubscriptionId(stripeSubscriptionId);
+  const existing = await findByStripeSubscriptionId(repo, stripeSubscriptionId);
   if (!existing) return null;
 
   return createOrUpdateSubscription(
+    repo,
     {
       customerId: existing.customerId,
       plan: existing.plan,
@@ -265,7 +271,7 @@ const updateStatusByStripeSubscription = (
 export const createBillingRouter = (options: BillingRouterOptions = {}): Router => {
   const router = Router();
 
-  router.post("/webhook", raw({ type: "application/json" }), (req: Request, res: Response) => {
+  router.post("/webhook", raw({ type: "application/json" }), async (req: Request, res: Response) => {
     const signature = req.headers["stripe-signature"];
     if (typeof signature !== "string") {
       res.status(400).json({ error: "Missing stripe-signature header" });
@@ -285,34 +291,46 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
       const event = constructStripeWebhookEvent(payload, signature);
       const mutations = getWebhookMutations(event);
 
-      for (const mutation of mutations) {
-        switch (mutation.kind) {
-          case "subscription_upsert":
-            applySnapshot(mutation.snapshot);
-            break;
-          case "checkout_completed":
-            applyCheckoutCompletion(mutation.payload);
-            break;
-          case "invoice_payment_failed":
-            updateStatusByStripeSubscription(
-              mutation.stripeSubscriptionId,
-              "past_due",
-            );
-            break;
-          case "invoice_payment_succeeded": {
-            const current = findByStripeSubscriptionId(mutation.stripeSubscriptionId);
-            if (
-              current &&
-              (current.status === "past_due" || current.status === "incomplete")
-            ) {
-              updateStatusByStripeSubscription(mutation.stripeSubscriptionId, "active");
+      await withTransaction(async (client) => {
+        const repo = new SubscriptionRepository(client);
+
+        for (const mutation of mutations) {
+          switch (mutation.kind) {
+            case "subscription_upsert":
+              await applySnapshot(repo, mutation.snapshot);
+              break;
+            case "checkout_completed":
+              await applyCheckoutCompletion(repo, mutation.payload);
+              break;
+            case "invoice_payment_failed":
+              await updateStatusByStripeSubscription(
+                repo,
+                mutation.stripeSubscriptionId,
+                "past_due",
+              );
+              break;
+            case "invoice_payment_succeeded": {
+              const current = await findByStripeSubscriptionId(
+                repo,
+                mutation.stripeSubscriptionId,
+              );
+              if (
+                current &&
+                (current.status === "past_due" || current.status === "incomplete")
+              ) {
+                await updateStatusByStripeSubscription(
+                  repo,
+                  mutation.stripeSubscriptionId,
+                  "active",
+                );
+              }
+              break;
             }
-            break;
+            default:
+              break;
           }
-          default:
-            break;
         }
-      }
+      });
 
       res.json({ received: true, type: event.type });
     } catch (error) {
@@ -329,7 +347,7 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
     res.json(PLAN_DEFINITIONS);
   });
 
-  router.get("/subscription", (req: Request, res: Response) => {
+  router.get("/subscription", async (req: Request, res: Response) => {
     const { customerId } = req.query;
 
     if (!customerId || typeof customerId !== "string") {
@@ -337,7 +355,13 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
       return;
     }
 
-    const subscription = findByCustomer(customerId);
+    let subscription: Subscription | null = null;
+    try {
+      subscription = await findByCustomer(subscriptionRepository, customerId);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch subscription" });
+      return;
+    }
     if (!subscription) {
       res.status(404).json({ error: "No subscription found for this customer" });
       return;
@@ -353,7 +377,13 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
       return;
     }
 
-    const existing = findByCustomer(input.customerId);
+    let existing: Subscription | null = null;
+    try {
+      existing = await findByCustomer(subscriptionRepository, input.customerId);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch subscription" });
+      return;
+    }
     if (existing && existing.status === "active") {
       res.status(409).json({ error: "Customer already has an active subscription" });
       return;
@@ -371,7 +401,8 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
       });
 
       const amount = getPlanAmount(input.plan, input.billingCycle);
-      const provisional = createOrUpdateSubscription(
+      const provisional = await createOrUpdateSubscription(
+        subscriptionRepository,
         {
           customerId: input.customerId,
           plan: input.plan,
@@ -411,9 +442,19 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
     const directStripeCustomerId =
       typeof body?.stripeCustomerId === "string" ? body.stripeCustomerId : null;
 
-    const subscription =
-      directStripeCustomerId ? findByStripeCustomerId(directStripeCustomerId) : undefined;
-    const fallback = customerId ? findByCustomer(customerId) : undefined;
+    let subscription: Subscription | null = null;
+    let fallback: Subscription | null = null;
+    try {
+      subscription = directStripeCustomerId
+        ? await findByStripeCustomerId(subscriptionRepository, directStripeCustomerId)
+        : null;
+      fallback = customerId
+        ? await findByCustomer(subscriptionRepository, customerId)
+        : null;
+    } catch {
+      res.status(500).json({ error: "Failed to resolve subscription customer" });
+      return;
+    }
 
     const stripeCustomerId =
       directStripeCustomerId ?? subscription?.stripeCustomerId ?? fallback?.stripeCustomerId;
@@ -450,11 +491,17 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
     const subscriptionId =
       typeof body.subscriptionId === "string" ? body.subscriptionId : undefined;
 
-    const subscription = subscriptionId
-      ? subscriptions.get(subscriptionId)
-      : customerId
-        ? findByCustomer(customerId)
-        : undefined;
+    let subscription: Subscription | null = null;
+    try {
+      subscription = subscriptionId
+        ? await subscriptionRepository.findById(subscriptionId)
+        : customerId
+          ? await findByCustomer(subscriptionRepository, customerId)
+          : null;
+    } catch {
+      res.status(500).json({ error: "Failed to fetch subscription" });
+      return;
+    }
 
     if (!subscription) {
       res.status(404).json({ error: "Subscription not found" });
@@ -476,7 +523,8 @@ export const createBillingRouter = (options: BillingRouterOptions = {}): Router 
         }
       }
 
-      const canceled = createOrUpdateSubscription(
+      const canceled = await createOrUpdateSubscription(
+        subscriptionRepository,
         {
           customerId: subscription.customerId,
           plan: subscription.plan,

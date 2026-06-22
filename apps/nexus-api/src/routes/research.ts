@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
+import { ResearchRepository } from "../database/repositories";
 import {
   type CreateResearchItemInput,
   type ResearchItem,
@@ -12,8 +13,7 @@ type ResearchRouterOptions = {
   requireAuth?: RequestHandler;
 };
 
-const researchItems = new Map<string, ResearchItem>();
-// TODO: Replace this in-memory map with persistent storage before production deployment.
+const researchRepository = new ResearchRepository();
 
 const VALID_TYPES: ResearchItemType[] = [
   "project",
@@ -187,12 +187,24 @@ export const createResearchRouter = (
     router.use(options.requireAuth);
   }
 
-  router.get("/", (_req, res) => {
-    res.json(Array.from(researchItems.values()));
+  router.get("/", async (_req, res) => {
+    try {
+      const items = await researchRepository.findAll();
+      res.json(items);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch research items" });
+    }
   });
 
-  router.get("/:id", (req, res) => {
-    const item = researchItems.get(req.params.id);
+  router.get("/:id", async (req, res) => {
+    let item: ResearchItem | null = null;
+    try {
+      item = await researchRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch research item" });
+      return;
+    }
+
     if (!item) {
       res.status(404).json({ error: "Research item not found" });
       return;
@@ -201,7 +213,7 @@ export const createResearchRouter = (
     res.json(item);
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid research item payload" });
@@ -226,12 +238,23 @@ export const createResearchRouter = (
       updatedAt: createdAt,
     };
 
-    researchItems.set(item.id, item);
-    res.status(201).json(item);
+    try {
+      const created = await researchRepository.create(item);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ error: "Failed to create research item" });
+    }
   });
 
-  router.put("/:id", (req, res) => {
-    const existing = researchItems.get(req.params.id);
+  router.put("/:id", async (req, res) => {
+    let existing: ResearchItem | null = null;
+    try {
+      existing = await researchRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch research item" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Research item not found" });
       return;
@@ -258,12 +281,28 @@ export const createResearchRouter = (
     if (updates.attachments !== undefined)
       updated.attachments = updates.attachments;
 
-    researchItems.set(updated.id, updated);
-    res.json(updated);
+    try {
+      const persisted = await researchRepository.update(updated);
+      if (!persisted) {
+        res.status(404).json({ error: "Research item not found" });
+        return;
+      }
+
+      res.json(persisted);
+    } catch {
+      res.status(500).json({ error: "Failed to update research item" });
+    }
   });
 
-  router.delete("/:id", (req, res) => {
-    const removed = researchItems.delete(req.params.id);
+  router.delete("/:id", async (req, res) => {
+    let removed = false;
+    try {
+      removed = await researchRepository.delete(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to delete research item" });
+      return;
+    }
+
     if (!removed) {
       res.status(404).json({ error: "Research item not found" });
       return;

@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
+import { BlueprintRepository } from "../database/repositories";
 import {
   type BlueprintFeature,
   type BlueprintStatus,
@@ -13,8 +14,7 @@ type ChefDrewRouterOptions = {
   requireAuth?: RequestHandler;
 };
 
-const blueprints = new Map<string, HospitalityBlueprint>();
-// TODO: Replace this in-memory map with persistent storage before production deployment.
+const blueprintRepository = new BlueprintRepository();
 
 const VALID_BLUEPRINT_TYPES: BlueprintType[] = [
   "restaurant",
@@ -150,12 +150,24 @@ export const createChefDrewRouter = (
     router.use(options.requireAuth);
   }
 
-  router.get("/", (_req, res) => {
-    res.json(Array.from(blueprints.values()));
+  router.get("/", async (_req, res) => {
+    try {
+      const blueprints = await blueprintRepository.findAll();
+      res.json(blueprints);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch blueprints" });
+    }
   });
 
-  router.get("/:id", (req, res) => {
-    const blueprint = blueprints.get(req.params.id);
+  router.get("/:id", async (req, res) => {
+    let blueprint: HospitalityBlueprint | null = null;
+    try {
+      blueprint = await blueprintRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch blueprint" });
+      return;
+    }
+
     if (!blueprint) {
       res.status(404).json({ error: "Blueprint not found" });
       return;
@@ -163,7 +175,7 @@ export const createChefDrewRouter = (
     res.json(blueprint);
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid blueprint payload" });
@@ -195,12 +207,23 @@ export const createChefDrewRouter = (
       updatedAt: createdAt,
     };
 
-    blueprints.set(blueprint.id, blueprint);
-    res.status(201).json(blueprint);
+    try {
+      const created = await blueprintRepository.create(blueprint);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ error: "Failed to create blueprint" });
+    }
   });
 
-  router.put("/:id", (req, res) => {
-    const existing = blueprints.get(req.params.id);
+  router.put("/:id", async (req, res) => {
+    let existing: HospitalityBlueprint | null = null;
+    try {
+      existing = await blueprintRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch blueprint" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Blueprint not found" });
       return;
@@ -234,12 +257,28 @@ export const createChefDrewRouter = (
     if (updates.documentIds !== undefined) updated.documentIds = updates.documentIds;
     if (updates.pdfTemplateIds !== undefined) updated.pdfTemplateIds = updates.pdfTemplateIds;
 
-    blueprints.set(updated.id, updated);
-    res.json(updated);
+    try {
+      const persisted = await blueprintRepository.update(updated);
+      if (!persisted) {
+        res.status(404).json({ error: "Blueprint not found" });
+        return;
+      }
+
+      res.json(persisted);
+    } catch {
+      res.status(500).json({ error: "Failed to update blueprint" });
+    }
   });
 
-  router.delete("/:id", (req, res) => {
-    const removed = blueprints.delete(req.params.id);
+  router.delete("/:id", async (req, res) => {
+    let removed = false;
+    try {
+      removed = await blueprintRepository.delete(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to delete blueprint" });
+      return;
+    }
+
     if (!removed) {
       res.status(404).json({ error: "Blueprint not found" });
       return;

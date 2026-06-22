@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
+import { ObjectiveRepository } from "../database/repositories";
 import {
   type CreateObjectiveInput,
   type Objective,
@@ -11,8 +12,7 @@ type ObjectivesRouterOptions = {
   requireAuth?: RequestHandler;
 };
 
-const objectives = new Map<string, Objective>();
-// TODO: Replace this in-memory map with persistent storage before production deployment.
+const objectiveRepository = new ObjectiveRepository();
 
 const isValidStatus = (status: unknown): status is ObjectiveStatus =>
   typeof status === "string" &&
@@ -145,12 +145,24 @@ export const createObjectivesRouter = (
     router.use(options.requireAuth);
   }
 
-  router.get("/", (_req, res) => {
-    res.json(Array.from(objectives.values()));
+  router.get("/", async (_req, res) => {
+    try {
+      const objectives = await objectiveRepository.findAll();
+      res.json(objectives);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch objectives" });
+    }
   });
 
-  router.get("/:id", (req, res) => {
-    const objective = objectives.get(req.params.id);
+  router.get("/:id", async (req, res) => {
+    let objective: Objective | null = null;
+    try {
+      objective = await objectiveRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch objective" });
+      return;
+    }
+
     if (!objective) {
       res.status(404).json({ error: "Objective not found" });
       return;
@@ -159,7 +171,7 @@ export const createObjectivesRouter = (
     res.json(objective);
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid objective payload" });
@@ -180,12 +192,23 @@ export const createObjectivesRouter = (
       updatedAt: createdAt,
     };
 
-    objectives.set(objective.id, objective);
-    res.status(201).json(objective);
+    try {
+      const created = await objectiveRepository.create(objective);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ error: "Failed to create objective" });
+    }
   });
 
-  router.put("/:id", (req, res) => {
-    const existing = objectives.get(req.params.id);
+  router.put("/:id", async (req, res) => {
+    let existing: Objective | null = null;
+    try {
+      existing = await objectiveRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch objective" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Objective not found" });
       return;
@@ -222,12 +245,28 @@ export const createObjectivesRouter = (
       updated.targetDate = updates.targetDate;
     }
 
-    objectives.set(updated.id, updated);
-    res.json(updated);
+    try {
+      const persisted = await objectiveRepository.update(updated);
+      if (!persisted) {
+        res.status(404).json({ error: "Objective not found" });
+        return;
+      }
+
+      res.json(persisted);
+    } catch {
+      res.status(500).json({ error: "Failed to update objective" });
+    }
   });
 
-  router.delete("/:id", (req, res) => {
-    const removed = objectives.delete(req.params.id);
+  router.delete("/:id", async (req, res) => {
+    let removed = false;
+    try {
+      removed = await objectiveRepository.delete(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to delete objective" });
+      return;
+    }
+
     if (!removed) {
       res.status(404).json({ error: "Objective not found" });
       return;

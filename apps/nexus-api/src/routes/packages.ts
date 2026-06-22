@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
+import { PackageRepository } from "../database/repositories";
 import {
   type CreatePackageInput,
   type Package,
@@ -16,8 +17,7 @@ type PackagesRouterOptions = {
   requireAuth?: RequestHandler;
 };
 
-const packages = new Map<string, Package>();
-// TODO: Replace this in-memory map with persistent storage before production deployment.
+const packageRepository = new PackageRepository();
 
 const VALID_PACKAGE_TYPES: PackageType[] = [
   "startup",
@@ -136,12 +136,24 @@ export const createPackagesRouter = (options: PackagesRouterOptions = {}): Route
     router.use(options.requireAuth);
   }
 
-  router.get("/", (_req, res) => {
-    res.json(Array.from(packages.values()));
+  router.get("/", async (_req, res) => {
+    try {
+      const packages = await packageRepository.findAll();
+      res.json(packages);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch packages" });
+    }
   });
 
-  router.get("/:id", (req, res) => {
-    const pkg = packages.get(req.params.id);
+  router.get("/:id", async (req, res) => {
+    let pkg: Package | null = null;
+    try {
+      pkg = await packageRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch package" });
+      return;
+    }
+
     if (!pkg) {
       res.status(404).json({ error: "Package not found" });
       return;
@@ -150,7 +162,7 @@ export const createPackagesRouter = (options: PackagesRouterOptions = {}): Route
     res.json(pkg);
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid package payload" });
@@ -174,12 +186,23 @@ export const createPackagesRouter = (options: PackagesRouterOptions = {}): Route
       updatedAt: createdAt,
     };
 
-    packages.set(pkg.id, pkg);
-    res.status(201).json(pkg);
+    try {
+      const created = await packageRepository.create(pkg);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ error: "Failed to create package" });
+    }
   });
 
-  router.put("/:id", (req, res) => {
-    const existing = packages.get(req.params.id);
+  router.put("/:id", async (req, res) => {
+    let existing: Package | null = null;
+    try {
+      existing = await packageRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch package" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Package not found" });
       return;
@@ -206,12 +229,28 @@ export const createPackagesRouter = (options: PackagesRouterOptions = {}): Route
     if (updates.status !== undefined) updated.status = updates.status;
     if (updates.downloadUrl !== undefined) updated.downloadUrl = updates.downloadUrl;
 
-    packages.set(updated.id, updated);
-    res.json(updated);
+    try {
+      const persisted = await packageRepository.update(updated);
+      if (!persisted) {
+        res.status(404).json({ error: "Package not found" });
+        return;
+      }
+
+      res.json(persisted);
+    } catch {
+      res.status(500).json({ error: "Failed to update package" });
+    }
   });
 
   router.post("/:id/generate", async (req, res) => {
-    const existing = packages.get(req.params.id);
+    let existing: Package | null = null;
+    try {
+      existing = await packageRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch package" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Package not found" });
       return;
@@ -234,7 +273,7 @@ export const createPackagesRouter = (options: PackagesRouterOptions = {}): Route
         updatedAt: nowIso(),
       };
 
-      packages.set(updated.id, updated);
+      await packageRepository.update(updated);
       res.status(201).json({
         packageUrl: generated.packageUrl,
         assetManifest: generated.assetManifest,
@@ -257,8 +296,15 @@ export const createPackagesRouter = (options: PackagesRouterOptions = {}): Route
     }
   });
 
-  router.delete("/:id", (req, res) => {
-    const removed = packages.delete(req.params.id);
+  router.delete("/:id", async (req, res) => {
+    let removed = false;
+    try {
+      removed = await packageRepository.delete(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to delete package" });
+      return;
+    }
+
     if (!removed) {
       res.status(404).json({ error: "Package not found" });
       return;

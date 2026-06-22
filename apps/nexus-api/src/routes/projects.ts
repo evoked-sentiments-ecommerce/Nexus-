@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
+import { ProjectRepository } from "../database/repositories";
 import {
   type CreateProjectInput,
   type Project,
@@ -12,8 +13,7 @@ type ProjectsRouterOptions = {
   requireAuth?: RequestHandler;
 };
 
-const projects = new Map<string, Project>();
-// TODO: Replace this in-memory map with persistent storage before production deployment.
+const projectRepository = new ProjectRepository();
 
 const isValidStatus = (status: unknown): status is ProjectStatus =>
   typeof status === "string" &&
@@ -109,12 +109,24 @@ export const createProjectsRouter = (
     router.use(options.requireAuth);
   }
 
-  router.get("/", (_req, res) => {
-    res.json(Array.from(projects.values()));
+  router.get("/", async (_req, res) => {
+    try {
+      const projects = await projectRepository.findAll();
+      res.json(projects);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch projects" });
+    }
   });
 
-  router.get("/:id", (req, res) => {
-    const project = projects.get(req.params.id);
+  router.get("/:id", async (req, res) => {
+    let project: Project | null = null;
+    try {
+      project = await projectRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch project" });
+      return;
+    }
+
     if (!project) {
       res.status(404).json({ error: "Project not found" });
       return;
@@ -123,7 +135,7 @@ export const createProjectsRouter = (
     res.json(project);
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid project payload" });
@@ -142,12 +154,23 @@ export const createProjectsRouter = (
       updatedAt: createdAt,
     };
 
-    projects.set(project.id, project);
-    res.status(201).json(project);
+    try {
+      const created = await projectRepository.create(project);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ error: "Failed to create project" });
+    }
   });
 
-  router.put("/:id", (req, res) => {
-    const existing = projects.get(req.params.id);
+  router.put("/:id", async (req, res) => {
+    let existing: Project | null = null;
+    try {
+      existing = await projectRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch project" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Project not found" });
       return;
@@ -180,12 +203,28 @@ export const createProjectsRouter = (
       updated.priority = updates.priority;
     }
 
-    projects.set(updated.id, updated);
-    res.json(updated);
+    try {
+      const persisted = await projectRepository.update(updated);
+      if (!persisted) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+
+      res.json(persisted);
+    } catch {
+      res.status(500).json({ error: "Failed to update project" });
+    }
   });
 
-  router.delete("/:id", (req, res) => {
-    const removed = projects.delete(req.params.id);
+  router.delete("/:id", async (req, res) => {
+    let removed = false;
+    try {
+      removed = await projectRepository.delete(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to delete project" });
+      return;
+    }
+
     if (!removed) {
       res.status(404).json({ error: "Project not found" });
       return;

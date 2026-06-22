@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
+import { DocumentRepository } from "../database/repositories";
 import {
   type CreateDocumentInput,
   type Document,
@@ -12,8 +13,7 @@ type DocumentsRouterOptions = {
   requireAuth?: RequestHandler;
 };
 
-const documents = new Map<string, Document>();
-// TODO: Replace this in-memory map with persistent storage before production deployment.
+const documentRepository = new DocumentRepository();
 
 const VALID_DOCUMENT_TYPES: DocumentType[] = [
   "proposal",
@@ -129,12 +129,24 @@ export const createDocumentsRouter = (
     router.use(options.requireAuth);
   }
 
-  router.get("/", (_req, res) => {
-    res.json(Array.from(documents.values()));
+  router.get("/", async (_req, res) => {
+    try {
+      const documents = await documentRepository.findAll();
+      res.json(documents);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch documents" });
+    }
   });
 
-  router.get("/:id", (req, res) => {
-    const document = documents.get(req.params.id);
+  router.get("/:id", async (req, res) => {
+    let document: Document | null = null;
+    try {
+      document = await documentRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch document" });
+      return;
+    }
+
     if (!document) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -143,7 +155,7 @@ export const createDocumentsRouter = (
     res.json(document);
   });
 
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid document payload" });
@@ -167,12 +179,23 @@ export const createDocumentsRouter = (
       updatedAt: createdAt,
     };
 
-    documents.set(document.id, document);
-    res.status(201).json(document);
+    try {
+      const created = await documentRepository.create(document);
+      res.status(201).json(created);
+    } catch {
+      res.status(500).json({ error: "Failed to create document" });
+    }
   });
 
-  router.put("/:id", (req, res) => {
-    const existing = documents.get(req.params.id);
+  router.put("/:id", async (req, res) => {
+    let existing: Document | null = null;
+    try {
+      existing = await documentRepository.findById(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to fetch document" });
+      return;
+    }
+
     if (!existing) {
       res.status(404).json({ error: "Document not found" });
       return;
@@ -207,12 +230,28 @@ export const createDocumentsRouter = (
       updated.version = existing.version + 1;
     }
 
-    documents.set(updated.id, updated);
-    res.json(updated);
+    try {
+      const persisted = await documentRepository.update(updated);
+      if (!persisted) {
+        res.status(404).json({ error: "Document not found" });
+        return;
+      }
+
+      res.json(persisted);
+    } catch {
+      res.status(500).json({ error: "Failed to update document" });
+    }
   });
 
-  router.delete("/:id", (req, res) => {
-    const removed = documents.delete(req.params.id);
+  router.delete("/:id", async (req, res) => {
+    let removed = false;
+    try {
+      removed = await documentRepository.delete(req.params.id);
+    } catch {
+      res.status(500).json({ error: "Failed to delete document" });
+      return;
+    }
+
     if (!removed) {
       res.status(404).json({ error: "Document not found" });
       return;
