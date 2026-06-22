@@ -141,7 +141,23 @@ router.patch("/:id", async (req: Request, res: Response) => {
       ? await goalRepository.update(req.params.id, updateInput)
       : {
           ...existing,
-          ...updateInput,
+          title: updateInput.title ?? existing.title,
+          description: updateInput.description ?? existing.description,
+          goalType: updateInput.goalType ?? existing.goalType,
+          industry: updateInput.industry !== undefined ? updateInput.industry : existing.industry,
+          priority: updateInput.priority ?? existing.priority,
+          status: updateInput.status ?? existing.status,
+          targetDate:
+            updateInput.targetDate !== undefined ? updateInput.targetDate : existing.targetDate,
+          successCriteria: updateInput.successCriteria ?? existing.successCriteria,
+          estimatedImpact:
+            updateInput.estimatedImpact !== undefined
+              ? updateInput.estimatedImpact
+              : existing.estimatedImpact,
+          estimatedValue:
+            updateInput.estimatedValue !== undefined
+              ? updateInput.estimatedValue
+              : existing.estimatedValue,
           updatedAt: new Date().toISOString(),
         };
 
