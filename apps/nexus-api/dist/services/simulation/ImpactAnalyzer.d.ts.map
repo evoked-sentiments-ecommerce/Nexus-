@@ -1,0 +1,1 @@
+{"version":3,"file":"ImpactAnalyzer.d.ts","sourceRoot":"","sources":["../../../src/services/simulation/ImpactAnalyzer.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,gBAAgB,EAAE,MAAM,2BAA2B,CAAC;AAC7D,OAAO,EAAE,cAAc,EAAE,MAAM,kBAAkB,CAAC;AAElD,qBAAa,cAAc;IACzB,OAAO,CACL,QAAQ,EAAE,cAAc,EACxB,QAAQ,EAAE,cAAc,GACvB,gBAAgB,EAAE;IAkCrB,OAAO,CAAC,YAAY;CAQrB"}

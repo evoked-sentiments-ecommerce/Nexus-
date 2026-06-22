@@ -16,8 +16,10 @@ const goals_1 = __importDefault(require("./routes/goals"));
 const objectives_1 = __importDefault(require("./routes/objectives"));
 const packages_1 = __importDefault(require("./routes/packages"));
 const pdf_1 = __importDefault(require("./routes/pdf"));
+const predictions_1 = __importDefault(require("./routes/predictions"));
 const projects_1 = __importDefault(require("./routes/projects"));
 const research_1 = __importDefault(require("./routes/research"));
+const simulations_1 = __importDefault(require("./routes/simulations"));
 const storage_1 = __importDefault(require("./routes/storage"));
 const logger_1 = require("./services/logger");
 const app = (0, express_1.default)();
@@ -62,8 +64,10 @@ app.use("/api/goals", goals_1.default);
 app.use("/api/objectives", objectives_1.default);
 app.use("/api/packages", packages_1.default);
 app.use("/api/pdf", pdf_1.default);
+app.use("/api/predictions", predictions_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/research", research_1.default);
+app.use("/api/simulations", simulations_1.default);
 app.use("/api/storage", storage_1.default);
 app.use((err, _req, res, _next) => {
     (0, logger_1.logError)("api_unhandled_error", {
