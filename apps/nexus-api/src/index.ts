@@ -11,8 +11,10 @@ import goalsRouter from "./routes/goals";
 import objectivesRouter from "./routes/objectives";
 import packagesRouter from "./routes/packages";
 import pdfRouter from "./routes/pdf";
+import predictionsRouter from "./routes/predictions";
 import projectsRouter from "./routes/projects";
 import researchRouter from "./routes/research";
+import simulationsRouter from "./routes/simulations";
 import storageRouter from "./routes/storage";
 import { logError, logInfo, logRequest, logWarn } from "./services/logger";
 
@@ -64,8 +66,10 @@ app.use("/api/goals", goalsRouter);
 app.use("/api/objectives", objectivesRouter);
 app.use("/api/packages", packagesRouter);
 app.use("/api/pdf", pdfRouter);
+app.use("/api/predictions", predictionsRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/research", researchRouter);
+app.use("/api/simulations", simulationsRouter);
 app.use("/api/storage", storageRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
