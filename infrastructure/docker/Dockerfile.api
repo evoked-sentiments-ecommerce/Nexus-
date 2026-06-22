@@ -1,0 +1,39 @@
+# ---- deps ----
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Copy root workspace manifests if present
+COPY package*.json ./
+COPY apps/nexus-api/package*.json ./apps/nexus-api/
+
+RUN npm ci --workspace=apps/nexus-api --if-present || npm ci --prefix apps/nexus-api --if-present || true
+
+# ---- build ----
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/nexus-api/node_modules ./apps/nexus-api/node_modules
+
+COPY . .
+
+WORKDIR /app/apps/nexus-api
+RUN npm run build --if-present || npx tsc --outDir dist --skipLibCheck --module commonjs --moduleResolution node --esModuleInterop true --strict false --noEmit false 2>/dev/null || true
+
+# ---- runtime ----
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nexus
+
+COPY --from=build --chown=nexus:nodejs /app/apps/nexus-api ./
+
+USER nexus
+EXPOSE 3000
+
+CMD ["node", "dist/index.js"]

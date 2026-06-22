@@ -1,0 +1,47 @@
+# ---- deps ----
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Copy root workspace manifests if present
+COPY package*.json ./
+COPY apps/nexus-web/package*.json ./apps/nexus-web/
+
+RUN npm ci --workspace=apps/nexus-web --if-present || npm ci --prefix apps/nexus-web --if-present || true
+
+# ---- build ----
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/nexus-web/node_modules ./apps/nexus-web/node_modules
+
+COPY . .
+
+WORKDIR /app/apps/nexus-web
+
+ARG API_URL=http://nexus-api:3000
+ENV API_URL=$API_URL
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN npm run build
+
+# ---- runtime ----
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3001
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+COPY --from=build --chown=nextjs:nodejs /app/apps/nexus-web/.next/standalone ./
+COPY --from=build --chown=nextjs:nodejs /app/apps/nexus-web/.next/static ./.next/static
+COPY --from=build --chown=nextjs:nodejs /app/apps/nexus-web/public ./public
+
+USER nextjs
+EXPOSE 3001
+
+CMD ["node", "server.js"]
