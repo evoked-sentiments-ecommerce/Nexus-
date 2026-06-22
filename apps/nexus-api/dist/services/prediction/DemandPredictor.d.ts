@@ -1,4 +1,4 @@
-import type { PredictorInput, PredictorOutput } from "./PredictionService";
+import type { PredictorInput, PredictorOutput } from "./PredictionEngine";
 export declare class DemandPredictor {
     predict(input: PredictorInput): PredictorOutput;
 }

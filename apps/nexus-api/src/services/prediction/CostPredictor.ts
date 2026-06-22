@@ -1,12 +1,14 @@
-import type { PredictorInput, PredictorOutput } from "./PredictionService";
+import type { PredictorInput, PredictorOutput } from "./PredictionEngine";
 
 export class CostPredictor {
   predict(input: PredictorInput): PredictorOutput {
-    const efficiencyFactor = 1 - input.projectedChangePct / 200;
-    const driftFactor = 1 + input.horizonPeriods * 0.008;
-    const value = input.baselineValue * efficiencyFactor * driftFactor;
-    const confidence = Math.max(40, 88 - input.volatilityPct * 2.5);
-    const spread = value * (input.volatilityPct / 100);
+    const inflation = input.inputData.drivers.inflationPct ?? 2;
+    const efficiency = input.inputData.drivers.efficiencyGainPct ?? 0;
+    const efficiencyFactor = 1 + (inflation - efficiency - input.inputData.projectedChangePct * 0.25) / 100;
+    const driftFactor = 1 + input.forecastPeriods * 0.009;
+    const value = input.inputData.baselineValue * efficiencyFactor * driftFactor;
+    const confidence = Math.max(40, 88 - input.inputData.volatilityPct * 2.5);
+    const spread = value * (input.inputData.volatilityPct / 100);
 
     return {
       metric: "Cost",
@@ -14,7 +16,7 @@ export class CostPredictor {
       lowerBound: Math.max(0, value - spread),
       upperBound: value + spread,
       confidence,
-      rationale: "Cost projection accounts for efficiency effects and inflationary drift over time.",
+      rationale: "Cost projection accounts for inflation, efficiency, and drift over the forecast horizon.",
     };
   }
 }

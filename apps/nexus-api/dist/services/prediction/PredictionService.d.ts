@@ -1,54 +1,33 @@
-import { Prediction, PredictionScope, PredictionTarget } from "../../entities/Prediction";
-import { ForecastRepository } from "./ForecastRepository";
-import { RevenuePredictor } from "./RevenuePredictor";
-import { CostPredictor } from "./CostPredictor";
-import { GrowthPredictor } from "./GrowthPredictor";
-import { DemandPredictor } from "./DemandPredictor";
-import { RiskPredictor } from "./RiskPredictor";
-export interface PredictorInput {
-    baselineValue: number;
-    projectedChangePct: number;
-    horizonPeriods: number;
-    volatilityPct: number;
-}
-export interface PredictorOutput {
-    metric: string;
-    value: number;
-    lowerBound: number;
-    upperBound: number;
-    confidence: number;
-    rationale: string;
-}
+import { Prediction, PredictionInputData, PredictionModel, PredictionType } from "../../entities/Prediction";
+import { PredictionRepository } from "../../database/repositories/PredictionRepository";
+import { ForecastAnalyzer } from "./ForecastAnalyzer";
+import { PredictionEngine } from "./PredictionEngine";
 export interface CreatePredictionInput {
-    title: string;
-    scope: PredictionScope;
-    target: PredictionTarget;
+    goalId: string | null;
+    projectId: string | null;
+    predictionType: PredictionType;
+    predictionModel: PredictionModel;
+    forecastPeriod: Prediction["forecastPeriod"];
+    inputData: PredictionInputData;
     requestedBy: string | null;
-    baselineValue: number;
-    projectedChangePct: number;
-    horizonPeriods: number;
-    periodUnit: "day" | "week" | "month" | "quarter" | "year";
-    volatilityPct: number;
-    context: Record<string, unknown>;
 }
 export declare class PredictionService {
     private readonly repository;
-    private readonly revenuePredictor;
-    private readonly costPredictor;
-    private readonly growthPredictor;
-    private readonly demandPredictor;
-    private readonly riskPredictor;
-    constructor(repository?: ForecastRepository, revenuePredictor?: RevenuePredictor, costPredictor?: CostPredictor, growthPredictor?: GrowthPredictor, demandPredictor?: DemandPredictor, riskPredictor?: RiskPredictor);
+    private readonly predictionEngine;
+    private readonly analyzer;
+    private readonly memoryPredictions;
+    constructor(repository?: PredictionRepository, predictionEngine?: PredictionEngine, analyzer?: ForecastAnalyzer);
     createPrediction(input: CreatePredictionInput): Promise<Prediction>;
     listPredictions(filters?: {
-        scope?: PredictionScope;
-        target?: PredictionTarget;
+        goalId?: string;
+        projectId?: string;
+        predictionType?: PredictionType;
     }): Promise<Prediction[]>;
     getPrediction(id: string): Promise<Prediction | null>;
-    compareForecastToActual(id: string, actualOutcome: number): Promise<Prediction | null>;
-    getAccuracySummary(target?: string): Promise<Record<string, number>>;
-    private buildRisks;
-    private buildRecommendations;
+    compareForecastToActual(id: string, actualOutcome: Record<string, unknown>, requestedBy: string | null): Promise<Prediction | null>;
+    getAccuracySummary(predictionType?: string): Promise<Record<string, number>>;
+    summarizeAccuracy(predictionType?: string): Promise<Record<string, number>>;
     private integratePredictionSignals;
+    private integrateLearning;
 }
 //# sourceMappingURL=PredictionService.d.ts.map

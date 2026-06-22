@@ -1,1 +1,1 @@
-{"version":3,"file":"RevenuePredictor.d.ts","sourceRoot":"","sources":["../../../src/services/prediction/RevenuePredictor.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,cAAc,EAAE,eAAe,EAAE,MAAM,qBAAqB,CAAC;AAE3E,qBAAa,gBAAgB;IAC3B,OAAO,CAAC,KAAK,EAAE,cAAc,GAAG,eAAe;CAgBhD"}
+{"version":3,"file":"RevenuePredictor.d.ts","sourceRoot":"","sources":["../../../src/services/prediction/RevenuePredictor.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,cAAc,EAAE,eAAe,EAAE,MAAM,oBAAoB,CAAC;AAE1E,qBAAa,gBAAgB;IAC3B,OAAO,CAAC,KAAK,EAAE,cAAc,GAAG,eAAe;CAiBhD"}

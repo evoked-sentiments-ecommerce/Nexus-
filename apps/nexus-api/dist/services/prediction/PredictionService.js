@@ -2,211 +2,206 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PredictionService = void 0;
 const crypto_1 = require("crypto");
-const chef_drew_1 = require("../chef-drew");
+const env_1 = require("../../config/env");
+const PredictionRepository_1 = require("../../database/repositories/PredictionRepository");
 const registry_1 = require("../capability-discovery/registry");
 const learning_1 = require("../learning");
 const memory_1 = require("../memory");
 const planner_1 = require("../planner");
 const reasoning_1 = require("../reasoning");
-const ForecastRepository_1 = require("./ForecastRepository");
-const RevenuePredictor_1 = require("./RevenuePredictor");
-const CostPredictor_1 = require("./CostPredictor");
-const GrowthPredictor_1 = require("./GrowthPredictor");
-const DemandPredictor_1 = require("./DemandPredictor");
-const RiskPredictor_1 = require("./RiskPredictor");
+const ForecastAnalyzer_1 = require("./ForecastAnalyzer");
+const PredictionEngine_1 = require("./PredictionEngine");
 class PredictionService {
-    constructor(repository = new ForecastRepository_1.ForecastRepository(), revenuePredictor = new RevenuePredictor_1.RevenuePredictor(), costPredictor = new CostPredictor_1.CostPredictor(), growthPredictor = new GrowthPredictor_1.GrowthPredictor(), demandPredictor = new DemandPredictor_1.DemandPredictor(), riskPredictor = new RiskPredictor_1.RiskPredictor()) {
+    constructor(repository = new PredictionRepository_1.PredictionRepository(), predictionEngine = new PredictionEngine_1.PredictionEngine(), analyzer = new ForecastAnalyzer_1.ForecastAnalyzer()) {
         this.repository = repository;
-        this.revenuePredictor = revenuePredictor;
-        this.costPredictor = costPredictor;
-        this.growthPredictor = growthPredictor;
-        this.demandPredictor = demandPredictor;
-        this.riskPredictor = riskPredictor;
+        this.predictionEngine = predictionEngine;
+        this.analyzer = analyzer;
+        this.memoryPredictions = new Map();
     }
     async createPrediction(input) {
-        const predictorInput = {
-            baselineValue: input.baselineValue,
-            projectedChangePct: input.projectedChangePct,
-            horizonPeriods: input.horizonPeriods,
-            volatilityPct: input.volatilityPct,
-        };
-        const predictorResults = [
-            this.revenuePredictor.predict(predictorInput),
-            this.costPredictor.predict(predictorInput),
-            this.growthPredictor.predict(predictorInput),
-            this.demandPredictor.predict(predictorInput),
-            this.riskPredictor.predict(predictorInput),
-        ];
-        const metrics = predictorResults.map((result) => ({
-            name: result.metric,
-            value: Number(result.value.toFixed(2)),
-            lowerBound: Number(result.lowerBound.toFixed(2)),
-            upperBound: Number(result.upperBound.toFixed(2)),
-            confidence: Number(result.confidence.toFixed(2)),
-        }));
-        if (input.scope === "chef_drew") {
-            try {
-                const costModel = await (0, chef_drew_1.generateCostModel)({
-                    operationName: String(input.context.operationName ?? "Chef Drew Operation"),
-                    domain: "restaurant",
-                    coversPerDay: Number(input.context.coversPerDay ?? 100),
-                    avgSpend: Number(input.context.avgSpend ?? input.baselineValue / 100),
-                    teamSize: Number(input.context.teamSize ?? 20),
-                    location: typeof input.context.location === "string" ? input.context.location : undefined,
-                });
-                metrics.push({
-                    name: "Prime Cost",
-                    value: Number(costModel.primeCost.toFixed(2)),
-                    lowerBound: Number((costModel.primeCost * 0.95).toFixed(2)),
-                    upperBound: Number((costModel.primeCost * 1.05).toFixed(2)),
-                    confidence: 74,
-                });
-            }
-            catch {
-                // Preserve deterministic prediction flow if Chef Drew model generation fails.
-            }
-        }
-        const risks = this.buildRisks(metrics);
-        const confidence = Number((metrics.reduce((sum, metric) => sum + metric.confidence, 0) / Math.max(metrics.length, 1)).toFixed(2));
-        const recommendations = this.buildRecommendations(input, metrics, risks);
+        const predictedOutcome = this.predictionEngine.run({
+            predictionType: input.predictionType,
+            forecastPeriods: input.forecastPeriod.periods,
+            inputData: input.inputData,
+        }, input.predictionModel);
         const prediction = {
             id: (0, crypto_1.randomUUID)(),
-            title: input.title,
-            scope: input.scope,
-            target: input.target,
-            requestedBy: input.requestedBy,
-            input: {
-                baselineValue: input.baselineValue,
-                projectedChangePct: input.projectedChangePct,
-                horizonPeriods: input.horizonPeriods,
-                periodUnit: input.periodUnit,
-                volatilityPct: input.volatilityPct,
-                context: input.context,
-            },
-            metrics,
-            risks,
-            recommendations,
-            confidence,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            goalId: input.goalId,
+            projectId: input.projectId,
+            predictionType: input.predictionType,
+            predictionModel: input.predictionModel,
+            forecastPeriod: input.forecastPeriod,
+            inputData: input.inputData,
+            predictedOutcome,
+            confidenceScore: predictedOutcome.confidenceScore,
             actualOutcome: null,
             accuracyScore: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
         };
-        await this.repository.create(prediction);
-        await this.integratePredictionSignals(prediction);
-        return prediction;
+        const stored = env_1.env.DATABASE_URL ? await this.repository.create(prediction) : null;
+        const result = stored ?? prediction;
+        if (!stored && !env_1.env.DATABASE_URL) {
+            this.memoryPredictions.set(result.id, result);
+        }
+        await this.integratePredictionSignals(result, input.requestedBy);
+        return result;
     }
     async listPredictions(filters) {
-        return this.repository.list(filters);
+        if (env_1.env.DATABASE_URL) {
+            return this.repository.list(filters);
+        }
+        return Array.from(this.memoryPredictions.values()).filter((prediction) => {
+            return (!filters?.goalId || prediction.goalId === filters.goalId)
+                && (!filters?.projectId || prediction.projectId === filters.projectId)
+                && (!filters?.predictionType || prediction.predictionType === filters.predictionType);
+        });
     }
     async getPrediction(id) {
-        return this.repository.getById(id);
+        if (env_1.env.DATABASE_URL) {
+            return this.repository.getById(id);
+        }
+        return this.memoryPredictions.get(id) ?? null;
     }
-    async compareForecastToActual(id, actualOutcome) {
-        const updated = await this.repository.compareForecastToActual(id, actualOutcome);
-        if (!updated) {
+    async compareForecastToActual(id, actualOutcome, requestedBy) {
+        const existing = await this.getPrediction(id);
+        if (!existing) {
             return null;
         }
-        const score = updated.accuracyScore ?? 0;
-        await (0, learning_1.captureSignal)({
-            userId: updated.requestedBy ?? "system",
-            entityType: "prediction",
-            entityId: updated.id,
-            signal: score >= 70 ? "accepted" : "modified",
-            context: { target: updated.target, accuracyScore: score, actualOutcome },
-        });
-        await (0, registry_1.updatePerformanceScore)("financial_modeling", Math.min(100, Math.max(0, Math.round(score))));
-        await (0, memory_1.upsertMemoryEntry)({
-            sessionId: `prediction-${updated.id}`,
-            sourceAgent: "prediction-engine",
-            domain: "prediction_accuracy",
-            content: `Prediction ${updated.id} for ${updated.target} compared against actual outcome with accuracy score ${score.toFixed(2)}.`,
-            tags: ["prediction", "accuracy", updated.target],
-            metadata: {
-                predictionId: updated.id,
-                target: updated.target,
-                score,
-                actualOutcome,
-            },
-        });
-        return updated;
-    }
-    async getAccuracySummary(target) {
-        return this.repository.getAccuracySummary(target);
-    }
-    buildRisks(metrics) {
-        const riskScore = metrics.find((metric) => metric.name === "Risk Score")?.value ?? 50;
-        return [
-            {
-                title: "Forecast variance risk",
-                level: riskScore >= 70 ? "high" : riskScore >= 45 ? "medium" : "low",
-                probabilityPct: Math.round(Math.min(95, Math.max(5, riskScore))),
-                mitigation: "Track weekly deviations and apply rolling re-forecast adjustments.",
-            },
-            {
-                title: "Execution drift risk",
-                level: riskScore >= 65 ? "high" : "medium",
-                probabilityPct: Math.round(Math.min(90, Math.max(10, riskScore * 0.85))),
-                mitigation: "Align planning milestones with accountability owners and KPI checkpoints.",
-            },
-        ];
-    }
-    buildRecommendations(input, metrics, risks) {
-        const revenue = metrics.find((metric) => metric.name === "Revenue")?.value ?? input.baselineValue;
-        const cost = metrics.find((metric) => metric.name === "Cost")?.value ?? input.baselineValue * 0.6;
-        const growth = metrics.find((metric) => metric.name === "Growth")?.value ?? 0;
-        const highRisk = risks.some((risk) => risk.level === "high");
-        const recommendations = [
-            `Target ${input.target} using ${input.horizonPeriods} ${input.periodUnit}(s) rolling forecast updates.`,
-            revenue > cost
-                ? "Projected topline exceeds projected cost profile; prioritize controlled growth execution."
-                : "Projected cost profile is elevated; tighten cost controls before scaling.",
-            growth >= 0
-                ? "Growth trajectory is positive; preserve retention and quality safeguards while scaling."
-                : "Growth trajectory is negative; rebalance pricing and demand generation initiatives.",
-        ];
-        if (highRisk) {
-            recommendations.push("Deploy downside scenario triggers and contingency staffing/budget plans.");
+        const actualValue = typeof actualOutcome.actualValue === "number"
+            ? actualOutcome.actualValue
+            : typeof actualOutcome.forecastValue === "number"
+                ? actualOutcome.forecastValue
+                : existing.predictedOutcome.forecastValue;
+        const accuracyScore = this.analyzer.calculateAccuracyScore(existing.predictedOutcome.forecastValue, actualValue);
+        const updated = {
+            ...existing,
+            actualOutcome,
+            accuracyScore,
+            updatedAt: new Date().toISOString(),
+        };
+        const persisted = env_1.env.DATABASE_URL
+            ? await this.repository.updateActualOutcome(updated.id, actualOutcome, accuracyScore)
+            : null;
+        const result = persisted ?? updated;
+        if (!persisted && !env_1.env.DATABASE_URL) {
+            this.memoryPredictions.set(result.id, result);
         }
-        return recommendations;
+        await this.integrateLearning(result, actualValue, requestedBy);
+        return result;
     }
-    async integratePredictionSignals(prediction) {
+    async getAccuracySummary(predictionType) {
+        return this.summarizeAccuracy(predictionType);
+    }
+    async summarizeAccuracy(predictionType) {
+        const predictions = await this.listPredictions(predictionType ? { predictionType: predictionType } : undefined);
+        const grouped = predictions.reduce((acc, prediction) => {
+            if (prediction.accuracyScore == null) {
+                return acc;
+            }
+            acc[prediction.predictionType] = acc[prediction.predictionType] ?? [];
+            acc[prediction.predictionType].push(prediction.accuracyScore);
+            return acc;
+        }, {});
+        return Object.fromEntries(Object.entries(grouped).map(([key, scores]) => [
+            key,
+            Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(2)),
+        ]));
+    }
+    async integratePredictionSignals(prediction, requestedBy) {
         await Promise.allSettled([
             (0, learning_1.captureSignal)({
-                userId: prediction.requestedBy ?? "system",
+                userId: requestedBy ?? "system",
                 entityType: "prediction",
                 entityId: prediction.id,
                 signal: "accepted",
-                context: { target: prediction.target, scope: prediction.scope, confidence: prediction.confidence },
+                context: {
+                    predictionType: prediction.predictionType,
+                    confidenceScore: prediction.confidenceScore,
+                    goalId: prediction.goalId,
+                    projectId: prediction.projectId,
+                },
             }),
             (0, memory_1.upsertMemoryEntry)({
                 sessionId: `prediction-${prediction.id}`,
                 sourceAgent: "prediction-engine",
-                domain: "prediction",
-                content: `Created prediction for ${prediction.target} with confidence ${prediction.confidence.toFixed(2)}.`,
-                tags: ["prediction", prediction.scope, prediction.target],
+                domain: "prediction_forecast",
+                content: `Forecast stored for ${prediction.predictionType} with confidence ${prediction.confidenceScore.toFixed(2)}.`,
+                tags: ["forecast", prediction.predictionType, prediction.inputData.domain],
                 metadata: {
                     predictionId: prediction.id,
-                    target: prediction.target,
-                    confidence: prediction.confidence,
+                    goalId: prediction.goalId,
+                    projectId: prediction.projectId,
+                    assumptions: prediction.predictedOutcome.assumptions,
+                    predictedOutcome: prediction.predictedOutcome,
                 },
             }),
-            (0, registry_1.recordUsage)("financial_modeling"),
             (0, planner_1.buildPlan)({
                 id: prediction.id,
-                title: `Forecast ${prediction.target}`,
-                description: `Execute and monitor forecast for ${prediction.target}`,
-                priority: "medium",
+                title: `Forecast ${prediction.predictionType}`,
+                description: `Execute against forecast for ${prediction.predictionType}`,
+                priority: prediction.confidenceScore >= 75 ? "high" : "medium",
             }),
             (0, reasoning_1.analyseRisks)({
                 domain: "prediction",
-                projectId: prediction.id,
-                inputs: { target: prediction.target, confidence: prediction.confidence },
+                projectId: prediction.projectId ?? prediction.id,
+                inputs: {
+                    predictionType: prediction.predictionType,
+                    risks: prediction.predictedOutcome.risks,
+                    confidenceScore: prediction.confidenceScore,
+                },
             }),
-            (0, reasoning_1.supportDecision)(`How should Nexus execute on forecasted ${prediction.target}?`, {
+            (0, reasoning_1.supportDecision)(`How should Nexus execute the ${prediction.predictionType} forecast?`, {
                 domain: "prediction",
-                projectId: prediction.id,
-                inputs: { recommendations: prediction.recommendations },
+                projectId: prediction.projectId ?? prediction.id,
+                inputs: {
+                    recommendations: prediction.predictedOutcome.recommendations,
+                    expectedReturns: prediction.predictedOutcome.expectedReturns,
+                    expectedCosts: prediction.predictedOutcome.expectedCosts,
+                },
+            }),
+            (0, registry_1.recordUsage)("financial_modeling"),
+        ]);
+    }
+    async integrateLearning(prediction, actualValue, requestedBy) {
+        const accuracyScore = prediction.accuracyScore ?? 0;
+        const insights = await (0, learning_1.generateInsights)("prediction");
+        const modelImprovements = [
+            accuracyScore >= 85
+                ? "Current model assumptions are performing well; preserve the weighting profile."
+                : "Model variance is elevated; tighten drivers and shorten review intervals.",
+            ...insights.map((insight) => insight.description),
+        ];
+        await Promise.allSettled([
+            (0, learning_1.captureSignal)({
+                userId: requestedBy ?? "system",
+                entityType: "prediction",
+                entityId: prediction.id,
+                signal: accuracyScore >= 70 ? "accepted" : "modified",
+                context: {
+                    predictionType: prediction.predictionType,
+                    actualValue,
+                    accuracyScore,
+                },
+            }),
+            (0, registry_1.updatePerformanceScore)("financial_modeling", Math.round(Math.max(0, Math.min(100, accuracyScore)))),
+            (0, memory_1.upsertMemoryEntry)({
+                sessionId: `prediction-${prediction.id}`,
+                sourceAgent: "prediction-engine",
+                domain: "prediction_learning",
+                content: `Prediction outcome recorded for ${prediction.predictionType} with accuracy ${accuracyScore.toFixed(2)}.`,
+                tags: ["prediction", "outcome", prediction.predictionType],
+                metadata: {
+                    predictionId: prediction.id,
+                    actualOutcome: prediction.actualOutcome,
+                    accuracyScore,
+                    modelImprovements,
+                    learningEvents: [
+                        "Predicted result compared to actual result",
+                        "Accuracy score generated",
+                        "Model improvement notes captured",
+                    ],
+                },
             }),
         ]);
     }

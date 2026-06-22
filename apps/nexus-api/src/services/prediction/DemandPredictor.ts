@@ -1,12 +1,13 @@
-import type { PredictorInput, PredictorOutput } from "./PredictionService";
+import type { PredictorInput, PredictorOutput } from "./PredictionEngine";
 
 export class DemandPredictor {
   predict(input: PredictorInput): PredictorOutput {
-    const sensitivity = 0.45;
-    const demandMultiplier = 1 + (input.projectedChangePct * sensitivity) / 100;
-    const value = input.baselineValue * demandMultiplier;
-    const confidence = Math.max(42, 86 - input.volatilityPct * 2);
-    const spread = value * (input.volatilityPct / 100) * 0.75;
+    const elasticity = input.inputData.drivers.elasticityPct ?? 45;
+    const seasonalBoost = input.inputData.drivers.seasonalityPct ?? 0;
+    const demandMultiplier = 1 + (input.inputData.projectedChangePct * (elasticity / 100) + seasonalBoost) / 100;
+    const value = input.inputData.baselineValue * demandMultiplier;
+    const confidence = Math.max(42, 86 - input.inputData.volatilityPct * 2);
+    const spread = value * (input.inputData.volatilityPct / 100) * 0.75;
 
     return {
       metric: "Demand",
@@ -14,7 +15,7 @@ export class DemandPredictor {
       lowerBound: Math.max(0, value - spread),
       upperBound: value + spread,
       confidence,
-      rationale: "Demand forecast applies elasticity-sensitive response to the proposed change.",
+      rationale: "Demand forecast applies elasticity and seasonality to the requested change.",
     };
   }
 }

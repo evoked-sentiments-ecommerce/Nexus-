@@ -1,5 +1,6 @@
 export { PredictionService } from "./PredictionService";
-export { ForecastRepository } from "./ForecastRepository";
+export { PredictionEngine } from "./PredictionEngine";
+export { ForecastAnalyzer } from "./ForecastAnalyzer";
 export { RevenuePredictor } from "./RevenuePredictor";
 export { CostPredictor } from "./CostPredictor";
 export { GrowthPredictor } from "./GrowthPredictor";

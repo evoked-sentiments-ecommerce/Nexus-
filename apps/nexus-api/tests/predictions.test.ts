@@ -31,41 +31,59 @@ describe("Predictions route", () => {
     app.use("/api/predictions", router);
   });
 
-  it("creates prediction and records actual outcome", async () => {
+  it("creates a prediction and records actual outcome learning", async () => {
     const created = await request(app)
       .post("/api/predictions")
       .send({
-        title: "Revenue Forecast",
-        scope: "nexus_business",
-        target: "Revenue",
+        goalId: "goal-123",
+        projectId: "project-123",
+        predictionType: "Revenue",
+        domain: "nexus_business",
         baselineValue: 120000,
         projectedChangePct: 8,
-        horizonPeriods: 6,
-        periodUnit: "month",
+        forecastPeriods: 6,
+        forecastUnit: "month",
         volatilityPct: 12,
+        assumptions: ["Stable pricing", "Steady conversion rates"],
+        drivers: {
+          pricingPower: 6,
+          conversionLift: 4,
+          inflationPct: 3,
+        },
+        context: {
+          channel: "direct-sales",
+        },
       });
 
     expect(created.status).toBe(201);
     expect(created.body.prediction).toBeDefined();
     expect(created.body.prediction.id).toBeDefined();
-    expect(created.body.prediction.target).toBe("Revenue");
+    expect(created.body.prediction.goalId).toBe("goal-123");
+    expect(created.body.prediction.projectId).toBe("project-123");
+    expect(created.body.prediction.predictionType).toBe("Revenue");
+    expect(created.body.prediction.predictedOutcome.primaryMetric).toBe("Revenue");
 
     const predictionId = created.body.prediction.id;
 
     const compared = await request(app)
       .post(`/api/predictions/${predictionId}/actual`)
-      .send({ actualOutcome: 131000 });
+      .send({
+        actualOutcome: {
+          actualValue: 131000,
+          notes: "Closed above forecast after late-quarter upsell push",
+        },
+      });
 
     expect(compared.status).toBe(200);
     expect(typeof compared.body.prediction.accuracyScore).toBe("number");
-    expect(compared.body.prediction.actualOutcome).toBe(131000);
+    expect(compared.body.prediction.actualOutcome.actualValue).toBe(131000);
 
     const summary = await request(app).get("/api/predictions/accuracy/summary");
     expect(summary.status).toBe(200);
     expect(summary.body.summary).toHaveProperty("Revenue");
   });
 
-  it("returns 400 when title is missing", async () => {
+  it("returns 400 when predictionType is missing", async () => {
     const response = await request(app).post("/api/predictions").send({});
     expect(response.status).toBe(400);
   });
