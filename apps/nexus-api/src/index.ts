@@ -2,6 +2,7 @@ import express, { NextFunction, Request, Response } from "express";
 import { env } from "./config/env";
 import { runMigrations } from "./database/connection";
 import authRouter from "./routes/auth";
+import agentsRouter from "./routes/agents";
 import billingRouter from "./routes/billing";
 import brandsRouter from "./routes/brands";
 import chefDrewRouter from "./routes/chef-drew";
@@ -57,6 +58,7 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/agents", agentsRouter);
 app.use("/api/billing", billingRouter);
 app.use("/api/brands", brandsRouter);
 app.use("/api/chef-drew", chefDrewRouter);
