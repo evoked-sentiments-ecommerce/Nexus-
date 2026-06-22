@@ -195,15 +195,15 @@ export const createDocumentsRouter = (
     if (updates.status !== undefined) updated.status = updates.status;
     if (updates.tags !== undefined) updated.tags = updates.tags;
 
-    if (updates.version !== undefined) {
-      updated.version = updates.version;
-    } else if (
+    const hasContentChange =
       updates.title !== undefined ||
       updates.documentType !== undefined ||
       updates.content !== undefined ||
-      updates.status !== undefined ||
-      updates.tags !== undefined
-    ) {
+      updates.tags !== undefined;
+
+    if (updates.version !== undefined) {
+      updated.version = updates.version;
+    } else if (hasContentChange) {
       updated.version = existing.version + 1;
     }
 

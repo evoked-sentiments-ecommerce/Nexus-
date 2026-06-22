@@ -43,7 +43,7 @@ export default function DocumentCard({
     trimmedOwnerId === "system"
       ? "System"
       : trimmedOwnerId
-        ? `User ${trimmedOwnerId.slice(0, Math.min(8, trimmedOwnerId.length)).toUpperCase()}`
+        ? `User ${trimmedOwnerId.slice(0, 8).toUpperCase()}`
         : "Unassigned";
 
   const contentPreview = content.trim()
