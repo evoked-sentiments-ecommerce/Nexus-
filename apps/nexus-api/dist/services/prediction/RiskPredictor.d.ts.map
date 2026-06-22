@@ -1,0 +1,1 @@
+{"version":3,"file":"RiskPredictor.d.ts","sourceRoot":"","sources":["../../../src/services/prediction/RiskPredictor.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,cAAc,EAAE,eAAe,EAAE,MAAM,oBAAoB,CAAC;AAE1E,qBAAa,aAAa;IACxB,OAAO,CAAC,KAAK,EAAE,cAAc,GAAG,eAAe;CAkBhD"}
