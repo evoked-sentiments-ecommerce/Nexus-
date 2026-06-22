@@ -1,6 +1,6 @@
 import type { ResearchItem } from "../../entities/ResearchItem";
 import { getPool, type QueryExecutor } from "../connection";
-import { toIsoString, toJson, toNullableString, toObjectArray, toStringArray } from "./helpers";
+import { toIsoString, toJson, toNullableString, toStringArray } from "./helpers";
 
 type ResearchRow = {
   id: string;
