@@ -8,7 +8,7 @@
 // an in-process Map as a development-time stub.
 // ---------------------------------------------------------------------------
 
-import { logInfo } from "../logger";
+import { logInfo, logWarn } from "../logger";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -160,4 +160,89 @@ function buildRecord<T>(type: MemoryType, entityId: string, data: T): MemoryReco
     updatedAt: now,
     version: (existing?.version ?? 0) + 1,
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// DB-backed memory entries (agent/session memory)
+// ---------------------------------------------------------------------------
+
+export interface MemoryEntry {
+  id?: string;
+  sessionId: string;
+  sourceAgent: string;
+  domain: string;
+  content: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+}
+
+/**
+ * Upsert a memory entry to the DB-backed store.
+ */
+export async function upsertMemoryEntry(entry: MemoryEntry): Promise<MemoryEntry> {
+  try {
+    const { query }: {
+      query: <T = unknown>(text: string, params?: unknown[]) => Promise<{ rows: T[] }>;
+    } = require("../../database/connection");
+    const result = await query<MemoryEntry>(
+      `INSERT INTO memory_entries (id, session_id, source_agent, domain, content, tags, metadata, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
+      [
+        entry.sessionId,
+        entry.sourceAgent,
+        entry.domain,
+        entry.content,
+        JSON.stringify(entry.tags ?? []),
+        JSON.stringify(entry.metadata ?? {}),
+      ]
+    );
+    logInfo("memory_entry_upserted", { sessionId: entry.sessionId, domain: entry.domain });
+    return result.rows[0] ?? entry;
+  } catch {
+    logWarn("memory_entry_db_unavailable", { sessionId: entry.sessionId });
+    return entry;
+  }
+}
+
+/**
+ * Get memory entries by session ID.
+ */
+export async function getMemoryEntries(filter: { sessionId?: string; domain?: string; sourceAgent?: string }): Promise<MemoryEntry[]> {
+  try {
+    const { query }: {
+      query: <T = unknown>(text: string, params?: unknown[]) => Promise<{ rows: T[] }>;
+    } = require("../../database/connection");
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+    if (filter.sessionId) {
+      conditions.push(`session_id = $${idx++}`);
+      params.push(filter.sessionId);
+    }
+    if (filter.domain) {
+      conditions.push(`domain = $${idx++}`);
+      params.push(filter.domain);
+    }
+    if (filter.sourceAgent) {
+      conditions.push(`source_agent = $${idx++}`);
+      params.push(filter.sourceAgent);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const result = await query<MemoryEntry>(`SELECT * FROM memory_entries ${where} ORDER BY created_at DESC`, params);
+    return result.rows;
+  } catch {
+    return [];
+  }
+}
+
+export async function searchMemoryByDomain(domain: string, _limit = 10): Promise<MemoryEntry[]> {
+  return getMemoryEntries({ domain });
+}
+
+export async function searchMemoryByAgent(agentName: string, sessionId?: string): Promise<MemoryEntry[]> {
+  return getMemoryEntries({ sourceAgent: agentName, ...(sessionId ? { sessionId } : {}) });
 }

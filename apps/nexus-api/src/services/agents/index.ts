@@ -332,6 +332,41 @@ export function recommendAgentsForObjective(objective: string): AgentName[] {
 
 async function simulateAgentExecution(task: AgentTask): Promise<unknown> {
   const caps = AGENT_CAPABILITIES[task.agentName];
+
+  try {
+    const { completeChat } = require("../llm");
+    const systemPrompt = `You are the ${caps.name.replace(/_/g, " ")} specialist agent. 
+Your expertise covers: ${caps.domains.join(", ")}.
+Your description: ${caps.description}
+You produce outputs of type: ${caps.outputTypes.join(", ")}.
+Respond with a structured JSON result for the given task.`;
+
+    const userMessage = `Task type: ${task.taskType}
+Input: ${JSON.stringify(task.input, null, 2)}
+
+Produce a ${caps.outputTypes[0] ?? "result"} output.`;
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      const result = await completeChat(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        { temperature: 0.7, maxTokens: 2000 }
+      );
+      return {
+        agentName: task.agentName,
+        taskType: task.taskType,
+        outputType: caps.outputTypes[0] ?? "result",
+        summary: result,
+        data: task.input,
+      };
+    }
+  } catch {
+    // Fall through to stub
+  }
+
   return {
     agentName: task.agentName,
     taskType: task.taskType,

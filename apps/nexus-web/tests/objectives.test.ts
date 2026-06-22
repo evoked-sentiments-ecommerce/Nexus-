@@ -17,7 +17,7 @@ import {
   ObjectivePriority,
   ObjectiveStatus,
   ObjectiveProgress,
-} from "../../src/utils/objectives";
+} from "../src/utils/objectives";
 
 // ---------------------------------------------------------------------------
 // Fixtures

@@ -188,7 +188,7 @@ export async function getLearningSummary() {
   };
 }
 
-function countBy<T extends Record<string, unknown>>(arr: T[], field: keyof T): Record<string, number> {
+function countBy<T extends object>(arr: T[], field: keyof T): Record<string, number> {
   return arr.reduce<Record<string, number>>((acc, item) => {
     const val = String(item[field]);
     acc[val] = (acc[val] ?? 0) + 1;

@@ -59,7 +59,35 @@ export interface Plan {
 export async function decomposeGoal(goal: Goal): Promise<Goal[]> {
   logInfo("planner_goal_decomposed", { goalId: goal.id, title: goal.title });
 
-  // Stub — replace with LLM-driven decomposition.
+  try {
+    const { structuredOutput }: {
+      structuredOutput: <T>(
+        messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+        schema: string,
+        options?: Record<string, unknown>
+      ) => Promise<T>;
+    } = require("../llm");
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      const schema = `{"subGoals": [{"id": "string", "title": "string", "description": "string", "priority": "string"}]}`;
+      const result = await structuredOutput<{ subGoals: Goal[] }>(
+        [{ role: "user", content: `Decompose this goal into 3-7 concrete sub-goals: "${goal.title}"
+Description: ${goal.description}` }],
+        schema
+      );
+      if (result.subGoals && result.subGoals.length > 0) {
+        return result.subGoals.map((sg: Goal, i: number) => ({
+          id: `${goal.id}-sub-${i + 1}`,
+          title: sg.title,
+          description: sg.description,
+          priority: goal.priority,
+        }));
+      }
+    }
+  } catch {
+    // fall through to stub
+  }
+
   return [
     {
       id: `${goal.id}-sub-1`,
@@ -95,7 +123,36 @@ export async function decomposeGoal(goal: Goal): Promise<Goal[]> {
 export async function generateObjectives(goal: Goal): Promise<GeneratedObjective[]> {
   logInfo("planner_objectives_generated", { goalId: goal.id });
 
-  // Stub — replace with LLM-driven objective generation.
+  try {
+    const { structuredOutput }: {
+      structuredOutput: <T>(
+        messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+        schema: string,
+        options?: Record<string, unknown>
+      ) => Promise<T>;
+    } = require("../llm");
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey) {
+      const schema = `{"objectives": [{"title": "string", "description": "string", "successCriteria": ["string"], "estimatedEffort": "small|medium|large"}]}`;
+      const result = await structuredOutput<{ objectives: Array<Pick<GeneratedObjective, "title" | "description" | "successCriteria" | "estimatedEffort">> }>(
+        [{ role: "user", content: `Generate 2-5 SMART objectives for goal "${goal.title}". Description: ${goal.description}` }],
+        schema
+      );
+      if (result.objectives && result.objectives.length > 0) {
+        return result.objectives.map((objective, index: number) => ({
+          id: `obj-${goal.id}-${index + 1}`,
+          goalId: goal.id,
+          title: objective.title,
+          description: objective.description,
+          successCriteria: objective.successCriteria ?? [],
+          estimatedEffort: objective.estimatedEffort ?? "medium",
+        }));
+      }
+    }
+  } catch {
+    // fall through to stub
+  }
+
   return [
     {
       id: `obj-${goal.id}-1`,
@@ -129,10 +186,39 @@ export async function generateObjectives(goal: Goal): Promise<GeneratedObjective
 export async function planTasks(objectives: GeneratedObjective[]): Promise<PlannedTask[]> {
   const tasks: PlannedTask[] = [];
 
+  try {
+    const { structuredOutput }: {
+      structuredOutput: <T>(
+        messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+        schema: string,
+        options?: Record<string, unknown>
+      ) => Promise<T>;
+    } = require("../llm");
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (apiKey && objectives.length > 0) {
+      const schema = `{"tasks": [{"objectiveId": "string", "title": "string", "description": "string", "order": 1, "dependsOn": ["string"]}]}`;
+      const prompt = objectives.map((objective) => `${objective.id}: ${objective.title} — ${objective.description}`).join("\n");
+      const result = await structuredOutput<{ tasks: Array<Pick<PlannedTask, "objectiveId" | "title" | "description" | "order" | "dependsOn">> }>(
+        [{ role: "user", content: `Break these objectives into an ordered dependency-aware task list.\n${prompt}` }],
+        schema
+      );
+      if (result.tasks && result.tasks.length > 0) {
+        return result.tasks.map((task, index: number) => ({
+          id: `task-${task.objectiveId ?? objectives[Math.min(index, objectives.length - 1)]?.id}-${index + 1}`,
+          objectiveId: task.objectiveId ?? objectives[Math.min(index, objectives.length - 1)]?.id ?? "unknown-objective",
+          title: task.title,
+          description: task.description,
+          order: typeof task.order === "number" ? task.order : index + 1,
+          dependsOn: task.dependsOn ?? [],
+        }));
+      }
+    }
+  } catch {
+    // fall through to stub
+  }
+
   for (const obj of objectives) {
     logInfo("planner_tasks_planned", { objectiveId: obj.id });
-
-    // Stub — replace with LLM-driven task breakdown.
     tasks.push(
       {
         id: `task-${obj.id}-1`,

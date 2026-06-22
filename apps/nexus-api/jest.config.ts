@@ -12,6 +12,7 @@ const config: Config = {
     "^.+\\.tsx?$": [
       "ts-jest",
       {
+        diagnostics: false,
         tsconfig: {
           target: "ES2020",
           module: "commonjs",

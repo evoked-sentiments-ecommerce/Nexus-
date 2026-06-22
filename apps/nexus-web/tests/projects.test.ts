@@ -13,7 +13,7 @@ import {
   getProjectInitials,
   Project,
   ProjectStatus,
-} from "../../src/utils/projects";
+} from "../src/utils/projects";
 
 // ---------------------------------------------------------------------------
 // Fixtures

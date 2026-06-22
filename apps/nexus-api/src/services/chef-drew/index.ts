@@ -256,6 +256,24 @@ export interface HospitalityBlueprint {
   staffingModel: string;
   financialTargets: Record<string, number>;
   implementationPhases: BlueprintPhase[];
+  menuSummary?: {
+    sections: number;
+    totalItems: number;
+    avgFoodCostPct: number;
+    highlights: string[];
+  };
+  foodCostModel?: {
+    targetFoodCostPct: number;
+    currentFoodCostPct: number;
+    recommendations: string[];
+  };
+  laborModel?: {
+    totalWeeklyHours: number;
+    laborCostPct: number;
+    positions: unknown[];
+  };
+  sops?: string[];
+  trainingOutline?: string;
   generatedAt: string;
 }
 
