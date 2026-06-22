@@ -36,6 +36,23 @@ CREATE TABLE IF NOT EXISTS objectives (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS goals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  goal_type TEXT NOT NULL DEFAULT 'Custom Goal',
+  industry TEXT,
+  priority TEXT NOT NULL DEFAULT 'medium',
+  status TEXT NOT NULL DEFAULT 'draft',
+  target_date TIMESTAMPTZ,
+  success_criteria TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  estimated_impact TEXT,
+  estimated_value DOUBLE PRECISION,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -189,6 +206,9 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_objectives_project_id ON objectives(project_id);
 CREATE INDEX IF NOT EXISTS idx_objectives_status ON objectives(status);
 CREATE INDEX IF NOT EXISTS idx_objectives_orchestration_status ON objectives(orchestration_status);
+CREATE INDEX IF NOT EXISTS idx_goals_goal_type ON goals(goal_type);
+CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
+CREATE INDEX IF NOT EXISTS idx_goals_priority ON goals(priority);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_objective_id ON sessions(objective_id);
