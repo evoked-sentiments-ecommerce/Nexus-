@@ -8,6 +8,7 @@ import {
   type PDFTemplateType,
   type UpdatePDFTemplateInput,
 } from "../entities/PDFTemplate";
+import { generateAndStorePDF } from "../services/pdfGenerator";
 
 type PDFRouterOptions = {
   requireAuth?: RequestHandler;
@@ -167,34 +168,51 @@ export const createPDFRouter = (options: PDFRouterOptions = {}): Router => {
     res.status(201).json(template);
   });
 
-  router.post("/generate", (req, res) => {
+  router.post("/generate", async (req, res) => {
     const input = toCreateInput(req.body);
     if (!input) {
       res.status(400).json({ error: "Invalid PDF generation payload" });
       return;
     }
 
-    const createdAt = nowIso();
-    const generatedPDF: PDFTemplate = {
-      id: pdfId(),
-      projectId: input.projectId,
-      documentId: input.documentId,
-      title: input.title,
-      templateType: input.templateType,
-      status: "generated",
-      previewUrl: `/api/pdf/${input.documentId}/preview`,
-      downloadUrl: `/api/pdf/${input.documentId}/download`,
-      exportControls: input.exportControls ?? [
-        "include_cover_page",
-        "include_toc",
-        "optimize_for_print",
-      ],
-      createdAt,
-      updatedAt: createdAt,
-    };
+    try {
+      const generatedFile = await generateAndStorePDF({
+        projectId: input.projectId,
+        documentId: input.documentId,
+        title: input.title,
+        templateType: input.templateType,
+      });
 
-    pdfTemplates.set(generatedPDF.id, generatedPDF);
-    res.status(201).json(generatedPDF);
+      const createdAt = nowIso();
+      const generatedPDF: PDFTemplate = {
+        id: pdfId(),
+        projectId: input.projectId,
+        documentId: input.documentId,
+        title: input.title,
+        templateType: input.templateType,
+        status: "generated",
+        previewUrl: generatedFile.downloadUrl,
+        downloadUrl: generatedFile.downloadUrl,
+        exportControls: input.exportControls ?? [
+          "include_cover_page",
+          "include_toc",
+          "optimize_for_print",
+        ],
+        createdAt,
+        updatedAt: createdAt,
+      };
+
+      pdfTemplates.set(generatedPDF.id, generatedPDF);
+      res.status(201).json(generatedPDF);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "PDF generation failed";
+      if (message.includes("Missing required environment variable")) {
+        res.status(500).json({ error: "PDF generation is not configured" });
+        return;
+      }
+
+      res.status(500).json({ error: "PDF generation failed" });
+    }
   });
 
   router.put("/:id", (req, res) => {
