@@ -32,6 +32,8 @@ type CheckoutRequestInput = {
   customerEmail: string | null;
 };
 
+// In-memory storage is a temporary bridge while Stripe integration stabilizes.
+// Replace this with a durable database-backed subscription repository before production launch.
 const subscriptions = new Map<string, Subscription>();
 
 const VALID_PLANS: SubscriptionPlan[] = ["starter", "professional", "enterprise"];

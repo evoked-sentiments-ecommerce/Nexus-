@@ -53,6 +53,11 @@ const STRIPE_PRICE_BY_PLAN: Record<SubscriptionPlan, string | undefined> = {
   professional: process.env.STRIPE_PRICE_PROFESSIONAL,
   enterprise: process.env.STRIPE_PRICE_ENTERPRISE,
 };
+const PRICE_ENV_BY_PLAN: Record<SubscriptionPlan, string> = {
+  starter: "STRIPE_PRICE_STARTER",
+  professional: "STRIPE_PRICE_PROFESSIONAL",
+  enterprise: "STRIPE_PRICE_ENTERPRISE",
+};
 
 const PRICE_ID_TO_PLAN = Object.entries(STRIPE_PRICE_BY_PLAN).reduce(
   (acc, [plan, priceId]) => {
@@ -130,7 +135,9 @@ const getStripeClient = (): Stripe => {
 const getPriceIdForPlan = (plan: SubscriptionPlan): string => {
   const priceId = STRIPE_PRICE_BY_PLAN[plan];
   if (!priceId) {
-    throw new Error(`Missing Stripe price configuration for plan: ${plan}`);
+    throw new Error(
+      `Missing ${PRICE_ENV_BY_PLAN[plan]} for plan: ${plan}`,
+    );
   }
 
   return priceId;
