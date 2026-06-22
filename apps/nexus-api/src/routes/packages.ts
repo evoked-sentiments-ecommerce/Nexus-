@@ -7,6 +7,10 @@ import {
   type PackageType,
   type UpdatePackageInput,
 } from "../entities/Package";
+import {
+  PackageAssetNotFoundError,
+  generateAndStorePackage,
+} from "../services/packageGenerator";
 
 type PackagesRouterOptions = {
   requireAuth?: RequestHandler;
@@ -204,6 +208,53 @@ export const createPackagesRouter = (options: PackagesRouterOptions = {}): Route
 
     packages.set(updated.id, updated);
     res.json(updated);
+  });
+
+  router.post("/:id/generate", async (req, res) => {
+    const existing = packages.get(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: "Package not found" });
+      return;
+    }
+
+    try {
+      const generated = await generateAndStorePackage({
+        packageId: existing.id,
+        projectId: existing.projectId,
+        packageName: existing.packageName,
+        includedDocuments: existing.includedDocuments,
+        includedPDFs: existing.includedPDFs,
+        includedAssets: existing.includedAssets,
+      });
+
+      const updated: Package = {
+        ...existing,
+        status: "ready",
+        downloadUrl: generated.packageUrl,
+        updatedAt: nowIso(),
+      };
+
+      packages.set(updated.id, updated);
+      res.status(201).json({
+        packageUrl: generated.packageUrl,
+        assetManifest: generated.assetManifest,
+      });
+    } catch (error) {
+      if (error instanceof PackageAssetNotFoundError) {
+        res.status(404).json({
+          error: `Unable to resolve ${error.assetType} asset '${error.assetId}' from storage`,
+        });
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : "Package generation failed";
+      if (message.includes("Missing required environment variable")) {
+        res.status(500).json({ error: "Package generation is not configured" });
+        return;
+      }
+
+      res.status(500).json({ error: "Package generation failed" });
+    }
   });
 
   router.delete("/:id", (req, res) => {
